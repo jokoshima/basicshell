@@ -90,6 +90,7 @@ int comment_position(char *str){
 int main(int argc, char **argv) {
     struct proclist *plist = proclist_new(); // you'll need this eventually
     char cmd_stripped[1024];
+    bool bg = false;
     // main loop for the shell
     while(true) {
         printf("do-> ");
@@ -97,49 +98,134 @@ int main(int argc, char **argv) {
 
         // tests for exit sequence (Ctrl-D)
         if (fgets(in, 1024, stdin) == NULL){
-            proclist_free(plist);
-            exit(0);
+            if (!proclist_empty(plist)){
+                printf("Don't kill the children please");
+            }
+            else{
+                proclist_free(plist);
+                exit(0);
+            }
         }
+
+        // Check for finished processes
+        for (struct procnode* curr = plist -> head; curr != NULL; 
+        curr = curr -> next){
+            int child_status = 0;
+            int ans = waitpid(curr -> pid, &child_status, WNOHANG);
+            if ((ans != -1) && (ans != 0)) {
+                proclist_remove(plist, curr -> pid);
+            }
+        }
+
+
         char **procs = tokenify(in, ";");
         for (int i=0; procs[i] != NULL; i++){
+            
+            // Check if a process should be put in the background:
+            const char ch = '&';
+            char *ret;
+            ret = strrchr(procs[i], ch);
+            if (ret != NULL){
+                char ret_stripped[strlen(ret)];
+                strip(ret, ret_stripped);
+                if (strlen(ret_stripped) == 1 && ret_stripped[0] == ch){
+                    bg = true;
+                    ret[0] = '\0';
+                    printf("Background\n");
+                }
+                else{
+                    bg = false;
+                    printf("& not at end of command\n");
+                }
+            }
+            else{
+                bg = false;
+                printf("Not background\n");
+            }
 
             // Comment handling
             procs[i][comment_position(procs[i])] = '\0';
 
+            // Tokenifying and no character check
             char **cmd = tokenify(procs[i], " \n\t");
-            strip(cmd[0], cmd_stripped);
-            
-            // Multispace/no character check
+            if (cmd[0] == NULL){
+                free(cmd);
+                continue;
+            }
+            else{
+                strip(cmd[0], cmd_stripped);
+            }
+
+            // Multispace check
             if (strlen(cmd_stripped) == 0){
                 continue;
             }
             
             // Exit call
             if (strcmp(cmd_stripped, "exit") == 0){
-                free_tokens(cmd);
-                free_tokens(procs);
-                proclist_free(plist);
-                exit(0);
+                if (!proclist_empty(plist)){
+                    printf("Don't kill the children please\n");
+                }
+                else{
+                    free_tokens(cmd);
+                    free_tokens(procs);
+                    proclist_free(plist);
+                    exit(0);
+                }
             }
 
             // Status call
             if (strcmp(cmd_stripped, "status") == 0){
+                struct rusage usage;
+                getrusage(RUSAGE_SELF, &usage);
+                printf("Shell: ");
+                printf("user: %ld.%06ld ", usage.ru_utime.tv_sec, usage.ru_utime.tv_usec);
+                printf("sys: %ld.%06ld\n", usage.ru_stime.tv_sec, usage.ru_stime.tv_usec);
+                getrusage(RUSAGE_CHILDREN, &usage);
+                printf("Children: ");
+                printf("user: %ld.%06ld ", usage.ru_utime.tv_sec, usage.ru_utime.tv_usec);
+                printf("sys: %ld.%06ld\n", usage.ru_stime.tv_sec, usage.ru_stime.tv_usec);
+                
+                printf("\n");
+                proclist_print(plist);
+                free_tokens(cmd);
+                continue;
+            }
 
+            // Kill PID call
+            if (strcmp(cmd_stripped, "kill") == 0){
+                /* 
+                convert to int, then to pid_t
+                if child is running
+                kill (pid, SIGKILL)
+                */ 
             }
 
             // Main process call procedure
-            //char **cmd = tokenify(procs[i], " \n\t");
             pid_t pid = fork();
             int childrv;
             int *p_a = &childrv;
             if (pid == 0){
-                if (execv(cmd[0], cmd) < 0) {
+                if (bg){
+                    proclist_add(plist, getpid(), procs[i]);
+                    printf("asdfghjkl\n");
+                    proclist_print(plist);
+                    //wait();
+                }
+                else if (execv(cmd[0], cmd) < 0) {
                     fprintf(stderr, "execv failed: %s\n", strerror(errno));
+                    //exit(1);
+                }
+                else{
+                    printf("Done\n");
                 }
             }
             else{
-                wait(p_a);
-                printf("Child finished\n");
+                if (!bg){
+                    waitpid(pid, p_a, WNOHANG);
+                }
+                //wait(p_a);
+                //printf("Child finished\n");
             }
 
             // Free the current command tokens
@@ -151,3 +237,6 @@ int main(int argc, char **argv) {
     proclist_free(plist); // clean up the process list
     return EXIT_SUCCESS;
 }
+
+
+// Additional functionality: add previous command on the up key!!

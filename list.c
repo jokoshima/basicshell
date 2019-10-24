@@ -121,11 +121,11 @@ bool proclist_empty(struct proclist *head){
 void proclist_print(struct proclist *head) {
     printf("Processes currently active: ");
     if (proclist_empty(head)){
-        printf("none");
+        printf("none\n");
         return;
     }
-    for (struct procnode* curr = head -> head; curr -> next != NULL; 
+    for (struct procnode* curr = head -> head; curr != NULL; 
     curr = curr -> next){
-        printf("\n\t\t[%d]: %s", curr -> pid, curr -> cmd);
+        printf("\n\t\t[%d]: %s\n", curr -> pid, curr -> cmd);
     }
 }
