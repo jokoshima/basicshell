@@ -88,7 +88,7 @@ int comment_position(char *str){
 }
 
 int main(int argc, char **argv) {
-    struct proclist *plist = proclist_new(); // you'll need this eventually
+    struct proclist *plist = proclist_new(); 
     char cmd_stripped[1024];
     bool bg = false;
     // main loop for the shell
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
         // tests for exit sequence (Ctrl-D)
         if (fgets(in, 1024, stdin) == NULL){
             if (!proclist_empty(plist)){
-                printf("Don't kill the children please");
+                printf("Don't kill the children please\n");
             }
             else{
                 proclist_free(plist);
@@ -107,12 +107,17 @@ int main(int argc, char **argv) {
             }
         }
 
+
+
+
         // Check for finished processes
         for (struct procnode* curr = plist -> head; curr != NULL; 
         curr = curr -> next){
             int child_status = 0;
             int ans = waitpid(curr -> pid, &child_status, WNOHANG);
+            //printf("Curr: %d\n", curr -> pid);
             if ((ans != -1) && (ans != 0)) {
+                //printf("Yes: %d\n", ans);
                 proclist_remove(plist, curr -> pid);
             }
         }
@@ -125,34 +130,31 @@ int main(int argc, char **argv) {
             const char ch = '&';
             char *ret;
             ret = strrchr(procs[i], ch);
-            if (ret != NULL){
+            if (ret != NULL){ //Process should be put on background
                 char ret_stripped[strlen(ret)];
                 strip(ret, ret_stripped);
                 if (strlen(ret_stripped) == 1 && ret_stripped[0] == ch){
                     bg = true;
                     ret[0] = '\0';
-                    printf("Background\n");
-                }
-                else{
+                    //printf("Background\n");
+                } else{ //don't really need to worry about this case though
                     bg = false;
-                    printf("& not at end of command\n");
+                    //printf("& not at end of command\n");
                 }
-            }
-            else{
+            } else{ //not a background process
                 bg = false;
-                printf("Not background\n");
+                //printf("Not background\n");
             }
 
             // Comment handling
             procs[i][comment_position(procs[i])] = '\0';
 
             // Tokenifying and no character check
-            char **cmd = tokenify(procs[i], " \n\t");
+            char **cmd = tokenify(procs[i], " \n\t");  //separate with spaces
             if (cmd[0] == NULL){
                 free(cmd);
                 continue;
-            }
-            else{
+            } else{
                 strip(cmd[0], cmd_stripped);
             }
 
@@ -161,20 +163,20 @@ int main(int argc, char **argv) {
                 continue;
             }
             
-            // Exit call
-            if (strcmp(cmd_stripped, "exit") == 0){
-                if (!proclist_empty(plist)){
+       // Exit call
+             if (strcmp(cmd_stripped, "exit") == 0){
+                 if (!proclist_empty(plist)){
                     printf("Don't kill the children please\n");
-                }
-                else{
-                    free_tokens(cmd);
-                    free_tokens(procs);
-                    proclist_free(plist);
-                    exit(0);
-                }
-            }
+                    continue;
+                 } else {
+                     free_tokens(cmd);
+                     free_tokens(procs);
+                     proclist_free(plist);
+                     exit(0);
+                 }
+             } 
 
-            // Status call
+        // Status call
             if (strcmp(cmd_stripped, "status") == 0){
                 struct rusage usage;
                 getrusage(RUSAGE_SELF, &usage);
@@ -192,40 +194,43 @@ int main(int argc, char **argv) {
                 continue;
             }
 
-            // Kill PID call
+
+
+        // Kill PID call
             if (strcmp(cmd_stripped, "kill") == 0){
-                /* 
-                convert to int, then to pid_t
-                if child is running
-                kill (pid, SIGKILL)
-                */ 
+                for (struct procnode* curr = plist -> head; curr != NULL; 
+                    curr = curr -> next){
+                    
+                    //printf("Curr: %d\n", curr -> pid);
+                    if (curr -> pid == atoi(cmd[1])) {
+                        printf("MURDER: %d\n", curr -> pid);
+                        kill(curr -> pid, SIGKILL);
+                        proclist_remove(plist, curr -> pid);
+                    }
+                }
+                continue;
             }
 
             // Main process call procedure
             pid_t pid = fork();
             int childrv;
             int *p_a = &childrv;
-            if (pid == 0){
-                if (bg){
-                    proclist_add(plist, getpid(), procs[i]);
-                    printf("asdfghjkl\n");
-                    proclist_print(plist);
-                    //wait();
-                }
-                else if (execv(cmd[0], cmd) < 0) {
+            if (pid == 0) { //child
+                //printf("child\n");
+                if (execv(cmd[0], cmd) < 0) { //if execv returned -1, kill the child
                     fprintf(stderr, "execv failed: %s\n", strerror(errno));
-                    //exit(1);
+                    exit(1);
+                } 
+            }
+            else {  //parent
+                //printf("parent\n");
+                if (!bg){
+                    wait(p_a);
+                    //printf("Detected bg\n");
                 }
                 else{
-                    printf("Done\n");
+                    proclist_add(plist, pid, procs[i]);
                 }
-            }
-            else{
-                if (!bg){
-                    waitpid(pid, p_a, WNOHANG);
-                }
-                //wait(p_a);
-                //printf("Child finished\n");
             }
 
             // Free the current command tokens
@@ -239,4 +244,3 @@ int main(int argc, char **argv) {
 }
 
 
-// Additional functionality: add previous command on the up key!!
