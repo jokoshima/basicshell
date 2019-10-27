@@ -11,4 +11,12 @@ See lab instructions posted on Moodle.
 
 ## Grade and my feedback
 
-Once you commit and submit your work to Github, I'll update this section with feedback and grading info.
+94/100
+
+Good work.  Lots of things work very well -- basic shell operation and both sequential and background processes work nicely.  List code all looks good.  Built-in commands look good.
+
+Just one bug that I saw:
+
+ - In the `for` loop starting on line 201, there's a problem in that if you remove a process from the list, your `for` loop update (`curr = curr -> next`) will reference the recently freed node which gives a "use after free" error.  Sometimes this will be a segfault and other times not, but it needs to be fixed.
+
+Also, `main` is still rather long and could/should be broken down into some smaller functions.
